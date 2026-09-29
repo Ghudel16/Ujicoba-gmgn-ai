@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { z } from "zod";
 
 const app = express();
@@ -10,6 +11,7 @@ app.use(express.json({ limit: "1mb" }));
 
 const PORT = Number(process.env.PORT || 3000);
 const GMGN_API_KEY = process.env.GMGN_API_KEY;
+const sseTransports = new Map();
 
 function cli(args) {
   return new Promise((resolve, reject) => {
@@ -35,7 +37,7 @@ function jsonResult(data) {
 }
 
 function makeServer() {
-  const server = new McpServer({ name: "Ujicoba GMGN AI", version: "1.0.1" });
+  const server = new McpServer({ name: "Ujicoba GMGN AI", version: "1.1.0" });
 
   server.tool("gmgn_ping",
     "Check MCP server and whether GMGN API credentials are configured. Does not expose the credential.",
@@ -128,10 +130,13 @@ app.get("/health", (_req,res) => res.json({
   ok:true,
   service:"ujicoba-gmgn-ai-mcp",
   mcp_endpoint:"/mcp",
+  sse_endpoint:"/sse",
+  message_endpoint:"/messages",
   mode:"read-only",
   gmgn_api_key_configured:Boolean(GMGN_API_KEY)
 }));
 
+// Existing Streamable HTTP transport. Preserved for current clients.
 app.all("/mcp", async (req,res) => {
   const server = makeServer();
   const transport = new StreamableHTTPServerTransport({
@@ -144,6 +149,43 @@ app.all("/mcp", async (req,res) => {
   } catch (e) {
     console.error(e);
     if (!res.headersSent) res.status(500).json({error:e instanceof Error ? e.message : String(e)});
+  }
+});
+
+// Legacy MCP SSE transport for clients that expect an SSE endpoint.
+// Each SSE connection gets its own server + transport session.
+app.get("/sse", async (req, res) => {
+  try {
+    const server = makeServer();
+    const transport = new SSEServerTransport("/messages", res);
+    sseTransports.set(transport.sessionId, { transport, server });
+
+    res.on("close", () => {
+      sseTransports.delete(transport.sessionId);
+    });
+
+    await server.connect(transport);
+    await transport.start();
+  } catch (e) {
+    console.error(e);
+    if (!res.headersSent) res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+// POST target advertised by SSEServerTransport.
+app.post("/messages", async (req, res) => {
+  const sessionId = typeof req.query.sessionId === "string" ? req.query.sessionId : "";
+  const entry = sseTransports.get(sessionId);
+
+  if (!entry) {
+    return res.status(404).json({ error: "Unknown or expired SSE session." });
+  }
+
+  try {
+    await entry.transport.handlePostMessage(req, res);
+  } catch (e) {
+    console.error(e);
+    if (!res.headersSent) res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
   }
 });
 
