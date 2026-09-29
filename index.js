@@ -14,7 +14,7 @@ const GMGN_API_KEY = process.env.GMGN_API_KEY;
 function cli(args) {
   return new Promise((resolve, reject) => {
     if (!GMGN_API_KEY) return reject(new Error("GMGN_API_KEY is not configured on Railway."));
-    const child = spawn("npx", ["gmgn-cli", ...args, "--raw"], {
+    const child = spawn("./node_modules/.bin/gmgn-cli", [...args, "--raw"], {
       env: { ...process.env, GMGN_API_KEY },
       stdio: ["ignore", "pipe", "pipe"]
     });
@@ -135,7 +135,7 @@ app.get("/health", (_req,res) => res.json({
 app.all("/mcp", async (req,res) => {
   const server = makeServer();
   const transport = new StreamableHTTPServerTransport({
-    sessionIdGenerator: () => randomUUID(),
+    sessionIdGenerator: undefined,
     enableJsonResponse: true
   });
   try {
