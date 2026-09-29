@@ -1,6 +1,6 @@
 {
   "name": "ujicoba-gmgn-ai-mcp",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,6 +9,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.19.1",
     "express": "^5.1.0",
-    "gmgn-cli": "^1.5.3"
+    "gmgn-cli": "^1.5.3",
+    "zod": "^3.25.76"
   }
 }
